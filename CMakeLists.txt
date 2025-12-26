@@ -1,0 +1,57 @@
+cmake_minimum_required(VERSION 3.15)
+project(CodeRunner)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 添加编译选项
+add_compile_options(-Wall -Wextra -O2)
+
+# 查找依赖
+find_package(Threads REQUIRED)
+
+# nlohmann/json
+include(FetchContent)
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.2
+)
+FetchContent_MakeAvailable(json)
+
+# httplib
+FetchContent_Declare(
+    httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG v0.14.3
+)
+FetchContent_MakeAvailable(httplib)
+
+# 包含目录
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# 源文件
+set(SOURCES
+    src/main.cpp
+    src/data_structures.cpp
+    src/seccomp_filter.cpp
+    src/namespace_isolation.cpp
+    src/cgroup_manager.cpp
+    src/code_executor.cpp
+    src/web_server.cpp
+)
+
+# 可执行文件
+add_executable(code_runner ${SOURCES})
+
+# 链接库
+target_link_libraries(code_runner 
+    PRIVATE 
+    nlohmann_json::nlohmann_json
+    httplib::httplib
+    Threads::Threads
+    seccomp
+)
+
+# 安装
+install(TARGETS code_runner DESTINATION bin)

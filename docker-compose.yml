@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  code-runner:
+    build: .
+    image: code-runner:latest
+    container_name: code-runner
+    ports:
+      - "8080:8080"
+    privileged: true  # 需要特权模式以使用 cgroups 和 namespace
+    volumes:
+      - ./config:/app/config
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
