@@ -31,10 +31,10 @@ NLOHMANN_JSON_SERIALIZE_ENUM(Verdict, {
 
 struct TestCase {
     int case_id;
-    std::string stdin_data;
+    std::string stdin;
     std::string expected;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(TestCase, case_id, stdin_data, expected)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(TestCase, case_id, stdin, expected)
 };
 
 struct ResourcesLimits {
@@ -56,15 +56,15 @@ struct LanguageConfig {
 
 struct TestCaseResult {
     std::string case_id;
-    std::string stdin_data;
-    std::string stdout_data;
-    std::string stderr_data;
+    std::string stdin;
+    std::string stdout;
+    std::string stderr;
     Verdict status;
     int time;           // 毫秒
     int memory;         // 字节
     std::string expected;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(TestCaseResult, case_id, stdin_data, stdout_data, stderr_data, status, time, memory, expected)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(TestCaseResult, case_id, stdin, stdout, stderr, status, time, memory, expected)
 };
 
 struct InputStruct {

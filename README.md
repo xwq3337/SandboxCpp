@@ -110,7 +110,7 @@ Content-Type: application/json
   "test_cases": [
     {
       "case_id": 1,
-      "stdin_data": "",
+      "stdin": "",
       "expected": "Hello World"
     }
   ],
@@ -137,9 +137,9 @@ Content-Type: application/json
   "result": [
     {
       "case_id": "1",
-      "stdin_data": "",
-      "stdout_data": "Hello World",
-      "stderr_data": "",
+      "stdin": "",
+      "stdout": "Hello World",
+      "stderr": "",
       "status": "Accepted",
       "time": 15,
       "memory": 2048000,
@@ -174,7 +174,7 @@ curl -X POST http://localhost:8080/submit \
     "test_cases": [
       {
         "case_id": 1,
-        "stdin_data": "1 2",
+        "stdin": "1 2",
         "expected": "3"
       }
     ],
@@ -201,7 +201,7 @@ curl -X POST http://localhost:8080/submit \
     "test_cases": [
       {
         "case_id": 1,
-        "stdin_data": "1 2",
+        "stdin": "1 2",
         "expected": "3"
       }
     ],

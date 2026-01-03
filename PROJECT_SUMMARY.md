@@ -187,7 +187,7 @@ curl -X POST http://localhost:8080/submit \
     "submission_id": 1,
     "language": "cpp",
     "code": "#include <iostream>\nint main() { std::cout << \"Hello\" << std::endl; }",
-    "test_cases": [{"case_id": 1, "stdin_data": "", "expected": "Hello"}],
+    "test_cases": [{"case_id": 1, "stdin": "", "expected": "Hello"}],
     "resources_limits": {
       "cpu_time": 1000,
       "memory_bytes": 268435456,
@@ -229,6 +229,6 @@ curl -X POST http://localhost:8080/submit \
 
 ---
 
-**项目创建时间**: 2025-12-26  
-**版本**: v1.0.0  
+**项目创建时间**: 2025-12-26
+**版本**: v1.0.0
 **协议**: MIT License

@@ -77,7 +77,7 @@ curl -X POST http://localhost:8080/submit \
     "code": "#include <iostream>\nint main() { std::cout << \"Hello World\" << std::endl; return 0; }",
     "test_cases": [{
       "case_id": 1,
-      "stdin_data": "",
+      "stdin": "",
       "expected": "Hello World"
     }],
     "resources_limits": {
