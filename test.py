@@ -1,229 +1,88 @@
-#!/usrusr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import requests
 import json
-import time
 
-SERVER_URL = "http://localhost:8080"
+BASE_URL = "http://localhost:8080"
 
-def print_section(title):
-    """打印章节标题"""
-    print("=" * 50)
-    print(title)
-    print("=" * 50)
-    print()
-
-def make_request(endpoint, method="GET", data=None, headers=None):
-    """发送HTTP请求并处理响应"""
+def test_language(name, language, code, test_input, expected):
+    """测试单个语言"""
+    data = {
+        'submission_id': 1,
+        'language': language,
+        'code': code,
+        'test_cases': [{
+            'case_id': 1,
+            'stdin': test_input,
+            'expected': expected
+        }],
+        'resources_limits': {
+            'cpu_time': 2000,
+            'memory_bytes': 268435456,
+            'stack_bytes': 8388608,
+            'output_bytes': 1048576
+        },
+        'message': '',
+        'seccomp_profile': ''
+    }
+    
     try:
-        url = f"{SERVER_URL}{endpoint}"
-
-        if method.upper() == "GET":
-            response = requests.get(url, headers=headers)
-        elif method.upper() == "POST":
-            if data and headers and "Content-Type" in headers and "application/json" in headers["Content-Type"]:
-                response = requests.post(url, json=data, headers=headers)
-            else:
-                response = requests.post(url, data=data, headers=headers)
+        response = requests.post(f'{BASE_URL}/submit', json=data, timeout=10)
+        result = response.json()
+        
+        status = result['result'][0]['status']
+        if status == 'Accepted':
+            print(f"✓ {name:15} ({language:10}) - Passed")
+            return True
         else:
-            print(f"不支持的HTTP方法: {method}")
-            return None
-
-        response.raise_for_status()  # 检查HTTP错误
-
-        # 尝试解析为JSON
-        try:
-            return response.json()
-        except json.JSONDecodeError:
-            return response.text
-
-    except requests.exceptions.RequestException as e:
-        print(f"请求失败: {e}")
-        return None
+            print(f"✗ {name:15} ({language:10}) - Failed ({status}) {result['result'][0]['stderr']}")
+            return False
     except Exception as e:
-        print(f"发生错误: {e}")
-        return None
+        print(f"✗ {name:15} ({language:10}) - Error: {str(e)[:40]}")
+        return False
 
-def test_health_check():
-    """测试健康检查"""
-    print_section("1. 测试健康检查...")
-    result = make_request("/health", "GET")
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
+# 测试用例
+tests = [
+    # 现有语言
+    ("C++", "cpp", '''
+#include <iostream>
+using namespace std;
+int main() {
+    int a, b;
+    cin >> a >> b;
+    cout << a + b << endl;
+    return 0;
+}
+''', "3 5", "8"),
 
-def test_cpp_code():
-    """测试C++代码执行"""
-    print_section("2. 测试C++代码执行...")
-
-    data = {
-        "submission_id": 1,
-        "language": "cpp",
-        "code": """#include <iostream>
-                    int main() {
-                        int a, b;
-                        std::cin >> a >> b;
-                        std::cout << a + b << std::endl;
-                        return 0;
-                    }""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "1 2",
-                "expected": "3"
-            },
-            {
-                "case_id": 2,
-                "stdin": "5 7",
-                "expected": "12"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 1000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
-
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
-
-def test_python_code():
-    """测试Python代码执行"""
-    print_section("3. 测试Python代码执行...")
-
-    data = {
-        "submission_id": 2,
-        "language": "python",
-        "code": """a, b = map(int, input().split())
-print(a + b)""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "1 2",
-                "expected": "3"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 2000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
-
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
-
-def test_c_code():
-    """测试C代码执行"""
-    print_section("4. 测试C代码执行...")
-
-    data = {
-        "submission_id": 3,
-        "language": "c",
-        "code": """#include <stdio.h>
+    ("C", "c", '''
+#include <stdio.h>
 int main() {
     int a, b;
     scanf("%d %d", &a, &b);
     printf("%d\\n", a + b);
     return 0;
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "3 4",
-                "expected": "7"
-            },
-            {
-                "case_id": 2,
-                "stdin": "100 4",
-                "expected": "104"
-            },
-            {
-                "case_id": 3,
-                "stdin": "1000 4000",
-                "expected": "5000"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 1000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+}
+''', "7 2", "9"),
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
+    ("Python", "python", '''
+a, b = map(int, input().split())
+print(a + b)
+''', "4 6", "10"),
 
-def test_java_code():
-    """测试Java代码执行"""
-    print_section("5. 测试Java代码执行...")
-
-    data = {
-        "submission_id": 4,
-        "language": "java",
-        "code": """import java.util.Scanner;
+    ("Java", "java", '''
+import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        int a = scanner.nextInt();
-        int b = scanner.nextInt();
+        Scanner sc = new Scanner(System.in);
+        int a = sc.nextInt();
+        int b = sc.nextInt();
         System.out.println(a + b);
-        scanner.close();
     }
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "10 20",
-                "expected": "30"
-            },
-            {
-                "case_id": 2,
-                "stdin": "100 200",
-                "expected": "300"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 3000,  # Java需要更多时间启动JVM
-            "memory_bytes": 536870912,  # Java需要更多内存
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+}
+''', "5 3", "8"),
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
-
-def test_go_code():
-    """测试Go代码执行"""
-    print_section("6. 测试Go代码执行...")
-
-    data = {
-        "submission_id": 5,
-        "language": "go",
-        "code": """package main
+    ("Go", "go", '''
+package main
 
 import "fmt"
 
@@ -231,184 +90,81 @@ func main() {
     var a, b int
     fmt.Scan(&a, &b)
     fmt.Println(a + b)
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "15 25",
-                "expected": "40"
-            },
-            {
-                "case_id": 2,
-                "stdin": "50 60",
-                "expected": "110"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 2000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+}
+''', "9 7", "16"),
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
-
-def test_rust_code():
-    """测试Rust代码执行"""
-    print_section("7. 测试Rust代码执行...")
-
-    data = {
-        "submission_id": 6,
-        "language": "rust",
-        "code": """use std::io;
+    ("Rust", "rust", '''
+use std::io;
 
 fn main() {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read line");
-    
-    let numbers: Vec<i32> = input
+    io::stdin().read_line(&mut input).unwrap();
+    let nums: Vec<i32> = input
         .split_whitespace()
-        .map(|s| s.parse().expect("Please type a number!"))
+        .map(|x| x.parse().unwrap())
         .collect();
-        
-    if numbers.len() == 2 {
-        println!("{}", numbers[0] + numbers[1]);
+    println!("{}", nums[0] + nums[1]);
+}
+''', "11 9", "20"),
+
+    # 新语言
+    ("JavaScript", "javascript", '''
+const readline = require('readline');
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+rl.on('line', (line) => {
+    const [a, b] = line.split(' ').map(Number);
+    console.log(a + b);
+    rl.close();
+});
+''', "6 4", "10"),
+
+    # 新增语言
+    ("C#", "csharp", '''
+using System;
+
+class Program {
+    static void Main() {
+        string[] input = Console.ReadLine().Split();
+        int a = int.Parse(input[0]);
+        int b = int.Parse(input[1]);
+        Console.WriteLine(a + b);
     }
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "8 12",
-                "expected": "20"
-            },
-            {
-                "case_id": 2,
-                "stdin": "30 40",
-                "expected": "70"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 2000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+}
+''', "8 2", "10"),
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
+    ("Zig", "zig", '''
+const std = @import("std");
 
-def test_compile_error():
-    """测试编译错误处理"""
-    print_section("8. 测试编译错误处理...")
+pub fn main() void {
+    std.debug.print("Hello, {s}!\\n", .{"World"});
+}
+''', "", "Hello, World\n"),
 
-    data = {
-        "submission_id": 7,
-        "language": "cpp",
-        "code": """#include <iostream>
-int main() {
-    std::cout << "Missing semicolon"
-    return 0;
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "",
-                "expected": "test"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 1000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+    ("PyPy", "pypy", '''
+a, b = map(int, input().split())
+print(a + b)
+''', "3 8", "11"),
+]
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
+print("=" * 80)
+print("Code Runner - 全部语言测试")
+print("=" * 80)
+print()
 
-def test_wrong_answer():
-    """测试Wrong Answer"""
-    print_section("9. 测试Wrong Answer...")
+passed = 0
+total = len(tests)
 
-    data = {
-        "submission_id": 8,
-        "language": "cpp",
-        "code": """#include <iostream>
-int main() {
-    std::cout << "wrong" << std::endl;
-    return 0;
-}""",
-        "test_cases": [
-            {
-                "case_id": 1,
-                "stdin": "",
-                "expected": "correct"
-            }
-        ],
-        "resources_limits": {
-            "cpu_time": 1000,
-            "memory_bytes": 268435456,
-            "stack_bytes": 8388608,
-            "output_bytes": 1048576
-        },
-        "message": "",
-        "seccomp_profile": ""
-    }
+for name, lang, code, input_val, expected in tests:
+    if test_language(name, lang, code, input_val, expected):
+        passed += 1
 
-    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
-    if result:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    print()
-
-def main():
-    """主函数"""
-    print_section("Code Runner 测试脚本")
-
-    # 测试服务器是否可用
-    print("正在检查服务器连接...")
-    try:
-        response = requests.get(f"{SERVER_URL}/health", timeout=5)
-        if response.status_code == 200:
-            print("✓ 服务器连接正常")
-        else:
-            print(f"⚠ 服务器返回状态码: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"✗ 无法连接到服务器: {e}")
-        print("请确保 Code Runner 服务正在运行在 localhost:8080")
-        return
-
-    print()
-
-    # 执行所有测试
-    test_health_check()
-    test_cpp_code()
-    test_python_code()
-    test_c_code()
-    test_java_code()
-    test_go_code()
-    test_rust_code()
-    test_compile_error()
-    test_wrong_answer()
-
-    print("=" * 50)
-    print("测试完成！")
-    print("=" * 50)
-
-if __name__ == "__main__":
-    main()
+print()
+print("=" * 80)
+print(f"测试结果: {passed}/{total} 通过")
+if passed == total:
+    print("🎉 所有测试通过!")
+print("=" * 80)

@@ -115,14 +115,7 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
 
     // 创建临时文件
     workDir = createWorkDir();
-    std::string sourceFile;
-
-    // Java 要求文件名与类名匹配（对于 public 类），使用大写 Main
-    if (language == "java") {
-        sourceFile = workDir + "/Main.java";
-    } else {
-        sourceFile = workDir + "/main." + language;
-    }
+    std::string sourceFile = workDir + "/" + config.source_file;
 
     // 写入源代码
     std::ofstream srcFile(sourceFile);
@@ -157,8 +150,38 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
     std::string errorFile = workDir + "/compile_error.txt";
     compileCmd += " 2> " + errorFile;
 
-    // 执行编译
-    int ret = system(compileCmd.c_str());
+    // 执行编译 - 需要设置完整的环境变量,特别是 PATH
+    // 因为 sudo 会重置 PATH,导致 go 和 rustc 找不到
+    int ret = 0;
+
+    // 使用 fork + exec 来设置环境变量
+    pid_t compilePid = fork();
+    if (compilePid == 0) {
+        // 子进程 - 设置环境变量后执行编译命令
+        // 添加必要的路径到 PATH (包含 go, rustc, zig 等)
+        const char* newPath = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin:/snap/bin:/home/ubuntu/.cargo/bin:/home/ubuntu/.zig";
+        setenv("PATH", newPath, 1);
+
+        // 设置 HOME 环境变量,因为 rustup 需要
+        // 如果当前 HOME 是 /root (sudo 环境),改为 ubuntu 用户的 home
+        const char* currentHome = getenv("HOME");
+        if (currentHome && strcmp(currentHome, "/root") == 0) {
+            setenv("HOME", "/home/ubuntu", 1);
+        }
+
+        // 执行编译命令
+        ret = system(compileCmd.c_str());
+        exit(ret != 0 ? 1 : 0);
+    } else if (compilePid > 0) {
+        // 父进程 - 等待编译完成
+        int status;
+        waitpid(compilePid, &status, 0);
+        ret = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    } else {
+        // fork 失败
+        compileError = "Failed to fork for compilation";
+        return Verdict::SystemError;
+    }
 
     if (ret != 0) {
         // 读取编译错误
@@ -172,8 +195,11 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
     }
 
     // 对于 Java，compiledPath 保存工作目录，因为 java 需要从 .class 文件所在目录运行
+    // 对于 Zig，compiledPath 保存工作目录，因为 zig 会把可执行文件放在源文件目录
     if (language == "java") {
         compiledPath = workDir;  // 返回工作目录，后续执行时使用 java Main
+    } else if (language == "zig") {
+        compiledPath = workDir;  // 返回工作目录，zig 会生成 main 在源文件目录
     } else {
         compiledPath = outputFile;
     }
@@ -189,6 +215,12 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
     // Java 需要特殊处理：运行 java Main，而不是执行编译好的二进制文件
     if (language == "java") {
         return executeJava(execPath, testCase, limits, allowedSyscalls);
+    }
+
+    // Zig 需要特殊处理：编译后的可执行文件名为 main，在源文件目录中
+    if (language == "zig") {
+        std::string zigExecPath = execPath + "/main";
+        return executeInSandbox(zigExecPath, testCase, limits, allowedSyscalls);
     }
 
     // 检查是否需要使用解释器
@@ -426,9 +458,13 @@ TestCaseResult CodeExecutor::executeInterpreted(const std::string& language,
         //     exit(1);
         // }
 
-        // 执行解释器（如 Python）
+        // 执行解释器
         if (language == "python") {
             execl("/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
+        } else if (language == "javascript") {
+            execl("/usr/bin/node", "node", sourceFile.c_str(), nullptr);
+        } else if (language == "pypy") {
+            execl("/usr/bin/pypy3", "pypy3", sourceFile.c_str(), nullptr);
         }
 
         // 如果 execl 返回，说明执行失败

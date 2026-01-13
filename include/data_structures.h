@@ -49,9 +49,10 @@ struct ResourcesLimits {
 struct LanguageConfig {
     std::string compile_cmd;
     std::string run_cmd;
+    std::string source_file;
     std::vector<std::string> allow_sys_calls;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(LanguageConfig, compile_cmd, run_cmd, allow_sys_calls)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(LanguageConfig, compile_cmd, run_cmd, source_file, allow_sys_calls)
 };
 
 struct TestCaseResult {
