@@ -115,7 +115,14 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
 
     // 创建临时文件
     workDir = createWorkDir();
-    std::string sourceFile = workDir + "/main." + language;
+    std::string sourceFile;
+
+    // Java 要求文件名与类名匹配（对于 public 类），使用大写 Main
+    if (language == "java") {
+        sourceFile = workDir + "/Main.java";
+    } else {
+        sourceFile = workDir + "/main." + language;
+    }
 
     // 写入源代码
     std::ofstream srcFile(sourceFile);
@@ -164,7 +171,12 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
         return Verdict::CompilationError;
     }
 
-    compiledPath = outputFile;
+    // 对于 Java，compiledPath 保存工作目录，因为 java 需要从 .class 文件所在目录运行
+    if (language == "java") {
+        compiledPath = workDir;  // 返回工作目录，后续执行时使用 java Main
+    } else {
+        compiledPath = outputFile;
+    }
     return Verdict::Accepted;
 }
 
@@ -173,6 +185,12 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
                                          const TestCase& testCase,
                                          const ResourcesLimits& limits,
                                          const std::vector<std::string>& allowedSyscalls) {
+
+    // Java 需要特殊处理：运行 java Main，而不是执行编译好的二进制文件
+    if (language == "java") {
+        return executeJava(execPath, testCase, limits, allowedSyscalls);
+    }
+
     // 检查是否需要使用解释器
     if (languageConfigs_.count(language) && languageConfigs_[language].compile_cmd.empty()) {
         // 解释型语言（如 Python）
@@ -181,7 +199,6 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
     // 编译型语言
     return executeInSandbox(execPath, testCase, limits, allowedSyscalls);
 }
-
 TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
                                               const TestCase& testCase,
                                               const ResourcesLimits& limits,
@@ -412,9 +429,6 @@ TestCaseResult CodeExecutor::executeInterpreted(const std::string& language,
         // 执行解释器（如 Python）
         if (language == "python") {
             execl("/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
-        } else if (language == "java") {
-            // Java 需要特殊处理
-            execl("/usr/bin/java", "java", "-cp", sourceFile.c_str(), "Main", nullptr);
         }
 
         // 如果 execl 返回，说明执行失败
@@ -483,6 +497,160 @@ TestCaseResult CodeExecutor::executeInterpreted(const std::string& language,
         }
 
     } else {
+        result.stderr = "Failed to fork process";
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[0]);
+        close(stderr_pipe[1]);
+    }
+
+    return result;
+}
+
+TestCaseResult CodeExecutor::executeJava(const std::string& workDir,
+                                        const TestCase& testCase,
+                                        const ResourcesLimits& limits,
+                                        const std::vector<std::string>& allowedSyscalls) {
+    TestCaseResult result;
+    result.case_id = std::to_string(testCase.case_id);
+    result.stdin = testCase.stdin;
+    result.expected = testCase.expected;
+    result.status = Verdict::SystemError;
+    result.time = 0;
+    result.memory = 0;
+
+    // 创建管道用于输入输出
+    int stdin_pipe[2], stdout_pipe[2], stderr_pipe[2];
+    if (pipe(stdin_pipe) < 0 || pipe(stdout_pipe) < 0 || pipe(stderr_pipe) < 0) {
+        result.stderr = "Failed to create pipes";
+        return result;
+    }
+
+    // 创建 cgroup
+    std::string cgroupName = "code_runner_" + std::to_string(getpid()) + "_" + result.case_id;
+    CgroupManager cgroup(cgroupName);
+    cgroup.setMemoryLimit(limits.memory_bytes);
+    cgroup.setPidsLimit(100);  // Java 需要更多线程用于 GC、编译等
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        // 子进程
+
+        // 将子进程加入 cgroup
+        cgroup.addProcess(getpid());
+
+        // 设置资源限制
+        struct rlimit rlim;
+
+        // CPU 时间限制
+        rlim.rlim_cur = rlim.rlim_max = (limits.cpu_time + 999) / 1000;
+        setrlimit(RLIMIT_CPU, &rlim);
+
+        // 栈大小限制
+        rlim.rlim_cur = rlim.rlim_max = limits.stack_bytes;
+        setrlimit(RLIMIT_STACK, &rlim);
+
+        // 文件大小限制
+        rlim.rlim_cur = rlim.rlim_max = limits.output_bytes;
+        setrlimit(RLIMIT_FSIZE, &rlim);
+
+        // 重定向标准输入输出
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stderr_pipe[0]);
+
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stderr_pipe[1], STDERR_FILENO);
+
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
+
+        // 切换到 .class 文件所在目录
+        chdir(workDir.c_str());
+
+        // 执行 java Main
+        execlp("java", "java", "Main", nullptr);
+
+        // 如果 execlp 返回，说明执行失败
+        fprintf(stderr, "Failed to execute java\n");
+        exit(1);
+    } else if (pid > 0) {
+        // 父进程
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
+
+        // 写入输入数据
+        write(stdin_pipe[1], testCase.stdin.c_str(), testCase.stdin.length());
+        close(stdin_pipe[1]);
+
+        // 读取输出
+        char buffer[4096];
+        ssize_t n;
+
+        while ((n = read(stdout_pipe[0], buffer, sizeof(buffer))) > 0) {
+            result.stdout.append(buffer, n);
+            if (result.stdout.length() > (size_t)limits.output_bytes) {
+                kill(pid, SIGKILL);
+                result.status = Verdict::RuntimeError;
+                result.stderr = "Output limit exceeded";
+                break;
+            }
+        }
+        close(stdout_pipe[0]);
+
+        // 读取错误输出
+        while ((n = read(stderr_pipe[0], buffer, sizeof(buffer))) > 0) {
+            result.stderr.append(buffer, n);
+        }
+        close(stderr_pipe[0]);
+
+        // 等待子进程结束
+        int status;
+        struct rusage usage;
+        wait4(pid, &status, 0, &usage);
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+
+        result.time = duration.count();
+        result.memory = cgroup.getMemoryUsage();
+
+        // 判断执行结果
+        if (WIFEXITED(status)) {
+            int exitCode = WEXITSTATUS(status);
+            if (exitCode == 0) {
+                // 比较输出
+                if (compareOutput(result.stdout, testCase.expected)) {
+                    result.status = Verdict::Accepted;
+                } else {
+                    result.status = Verdict::WrongAnswer;
+                }
+            } else {
+                result.status = Verdict::RuntimeError;
+            }
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            if (sig == SIGXCPU || result.time > limits.cpu_time) {
+                result.status = Verdict::TimeLimitExceeded;
+            } else if (sig == SIGSYS) {
+                result.status = Verdict::RestrictedSystemCall;
+            } else if (sig == SIGKILL && result.memory > (size_t)limits.memory_bytes) {
+                result.status = Verdict::MemoryLimitExceeded;
+            } else {
+                result.status = Verdict::RuntimeError;
+            }
+        }
+
+    } else {
+        // fork 失败
         result.stderr = "Failed to fork process";
         close(stdin_pipe[0]);
         close(stdin_pipe[1]);

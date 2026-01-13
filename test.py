@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usrusr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import requests
@@ -171,12 +171,149 @@ int main() {
         print(json.dumps(result, indent=2, ensure_ascii=False))
     print()
 
-def test_compile_error():
-    """测试编译错误处理"""
-    print_section("5. 测试编译错误处理...")
+def test_java_code():
+    """测试Java代码执行"""
+    print_section("5. 测试Java代码执行...")
 
     data = {
         "submission_id": 4,
+        "language": "java",
+        "code": """import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        int a = scanner.nextInt();
+        int b = scanner.nextInt();
+        System.out.println(a + b);
+        scanner.close();
+    }
+}""",
+        "test_cases": [
+            {
+                "case_id": 1,
+                "stdin": "10 20",
+                "expected": "30"
+            },
+            {
+                "case_id": 2,
+                "stdin": "100 200",
+                "expected": "300"
+            }
+        ],
+        "resources_limits": {
+            "cpu_time": 3000,  # Java需要更多时间启动JVM
+            "memory_bytes": 536870912,  # Java需要更多内存
+            "stack_bytes": 8388608,
+            "output_bytes": 1048576
+        },
+        "message": "",
+        "seccomp_profile": ""
+    }
+
+    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
+    if result:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    print()
+
+def test_go_code():
+    """测试Go代码执行"""
+    print_section("6. 测试Go代码执行...")
+
+    data = {
+        "submission_id": 5,
+        "language": "go",
+        "code": """package main
+
+import "fmt"
+
+func main() {
+    var a, b int
+    fmt.Scan(&a, &b)
+    fmt.Println(a + b)
+}""",
+        "test_cases": [
+            {
+                "case_id": 1,
+                "stdin": "15 25",
+                "expected": "40"
+            },
+            {
+                "case_id": 2,
+                "stdin": "50 60",
+                "expected": "110"
+            }
+        ],
+        "resources_limits": {
+            "cpu_time": 2000,
+            "memory_bytes": 268435456,
+            "stack_bytes": 8388608,
+            "output_bytes": 1048576
+        },
+        "message": "",
+        "seccomp_profile": ""
+    }
+
+    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
+    if result:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    print()
+
+def test_rust_code():
+    """测试Rust代码执行"""
+    print_section("7. 测试Rust代码执行...")
+
+    data = {
+        "submission_id": 6,
+        "language": "rust",
+        "code": """use std::io;
+
+fn main() {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).expect("Failed to read line");
+    
+    let numbers: Vec<i32> = input
+        .split_whitespace()
+        .map(|s| s.parse().expect("Please type a number!"))
+        .collect();
+        
+    if numbers.len() == 2 {
+        println!("{}", numbers[0] + numbers[1]);
+    }
+}""",
+        "test_cases": [
+            {
+                "case_id": 1,
+                "stdin": "8 12",
+                "expected": "20"
+            },
+            {
+                "case_id": 2,
+                "stdin": "30 40",
+                "expected": "70"
+            }
+        ],
+        "resources_limits": {
+            "cpu_time": 2000,
+            "memory_bytes": 268435456,
+            "stack_bytes": 8388608,
+            "output_bytes": 1048576
+        },
+        "message": "",
+        "seccomp_profile": ""
+    }
+
+    result = make_request("/submit", "POST", data, {"Content-Type": "application/json"})
+    if result:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    print()
+
+def test_compile_error():
+    """测试编译错误处理"""
+    print_section("8. 测试编译错误处理...")
+
+    data = {
+        "submission_id": 7,
         "language": "cpp",
         "code": """#include <iostream>
 int main() {
@@ -207,10 +344,10 @@ int main() {
 
 def test_wrong_answer():
     """测试Wrong Answer"""
-    print_section("6. 测试Wrong Answer...")
+    print_section("9. 测试Wrong Answer...")
 
     data = {
-        "submission_id": 5,
+        "submission_id": 8,
         "language": "cpp",
         "code": """#include <iostream>
 int main() {
@@ -263,6 +400,9 @@ def main():
     test_cpp_code()
     test_python_code()
     test_c_code()
+    test_java_code()
+    test_go_code()
+    test_rust_code()
     test_compile_error()
     test_wrong_answer()
 

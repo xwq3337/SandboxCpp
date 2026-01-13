@@ -35,7 +35,12 @@ private:
     TestCaseResult executeInterpreted(const std::string& language, const std::string& sourceFile,
                                       const TestCase& testCase, const ResourcesLimits& limits,
                                       const std::vector<std::string>& allowedSyscalls);
-    
+
+    // 执行 Java 程序
+    TestCaseResult executeJava(const std::string& workDir, const TestCase& testCase,
+                              const ResourcesLimits& limits,
+                              const std::vector<std::string>& allowedSyscalls);
+
     // 比较输出
     bool compareOutput(const std::string& output, const std::string& expected);
     
