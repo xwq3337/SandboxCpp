@@ -181,8 +181,8 @@
     ]
   },
   "zig": {
-    "compile_cmd": "zig build-exe {source} -O ReleaseFast --name main",
-    "run_cmd": "{source_dir}/main",
+    "compile_cmd": "zig build-exe {source} -O ReleaseFast --name main -femit-bin={output} -lc",
+    "run_cmd": "{output}",
     "source_file": "main.zig",
     "allow_sys_calls": [
       "read", "write", "close", "fstat", "lseek",

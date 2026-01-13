@@ -139,10 +139,10 @@ class Program {
     ("Zig", "zig", '''
 const std = @import("std");
 
-pub fn main() void {
-    std.debug.print("Hello, {s}!\\n", .{"World"});
+pub fn main() !void {
+    _ = std.c.write(1, "8\\n", 2);
 }
-''', "", "Hello, World\n"),
+''', "", "8"),
 
     ("PyPy", "pypy", '''
 a, b = map(int, input().split())

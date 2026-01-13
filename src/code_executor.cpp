@@ -158,9 +158,13 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
     pid_t compilePid = fork();
     if (compilePid == 0) {
         // 子进程 - 设置环境变量后执行编译命令
-        // 添加必要的路径到 PATH (包含 go, rustc, zig 等)
-        const char* newPath = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin:/snap/bin:/home/ubuntu/.cargo/bin:/home/ubuntu/.zig";
+        // 使用沙箱中的编译器路径
+        const char* newPath = "/opt/sandbox/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/sandbox/usr/local/go/bin:/opt/sandbox/usr/local/node/bin:/opt/sandbox/usr/local/zig:/opt/sandbox/usr/local/cargo/bin:/snap/bin:/home/ubuntu/.cargo/bin:/home/ubuntu/.zig";
         setenv("PATH", newPath, 1);
+
+        // 设置 LD_LIBRARY_PATH 以使用沙箱中的库
+        const char* newLibPath = "/opt/sandbox/usr/lib:/opt/sandbox/lib:/opt/sandbox/lib64:/opt/sandbox/usr/local/lib";
+        setenv("LD_LIBRARY_PATH", newLibPath, 1);
 
         // 设置 HOME 环境变量,因为 rustup 需要
         // 如果当前 HOME 是 /root (sudo 环境),改为 ubuntu 用户的 home
@@ -168,6 +172,10 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
         if (currentHome && strcmp(currentHome, "/root") == 0) {
             setenv("HOME", "/home/ubuntu", 1);
         }
+
+        // 设置 Rust 环境变量，指向沙箱中的 rustup
+        setenv("RUSTUP_HOME", "/opt/sandbox/usr/local/rustup", 1);
+        setenv("CARGO_HOME", "/opt/sandbox/usr/local/cargo", 1);
 
         // 执行编译命令
         ret = system(compileCmd.c_str());
@@ -195,11 +203,8 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
     }
 
     // 对于 Java，compiledPath 保存工作目录，因为 java 需要从 .class 文件所在目录运行
-    // 对于 Zig，compiledPath 保存工作目录，因为 zig 会把可执行文件放在源文件目录
     if (language == "java") {
         compiledPath = workDir;  // 返回工作目录，后续执行时使用 java Main
-    } else if (language == "zig") {
-        compiledPath = workDir;  // 返回工作目录，zig 会生成 main 在源文件目录
     } else {
         compiledPath = outputFile;
     }
@@ -215,12 +220,6 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
     // Java 需要特殊处理：运行 java Main，而不是执行编译好的二进制文件
     if (language == "java") {
         return executeJava(execPath, testCase, limits, allowedSyscalls);
-    }
-
-    // Zig 需要特殊处理：编译后的可执行文件名为 main，在源文件目录中
-    if (language == "zig") {
-        std::string zigExecPath = execPath + "/main";
-        return executeInSandbox(zigExecPath, testCase, limits, allowedSyscalls);
     }
 
     // 检查是否需要使用解释器
@@ -458,13 +457,13 @@ TestCaseResult CodeExecutor::executeInterpreted(const std::string& language,
         //     exit(1);
         // }
 
-        // 执行解释器
+        // 执行解释器 - 使用沙箱中的解释器
         if (language == "python") {
-            execl("/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
+            execl("/opt/sandbox/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
         } else if (language == "javascript") {
-            execl("/usr/bin/node", "node", sourceFile.c_str(), nullptr);
+            execl("/opt/sandbox/usr/bin/node", "node", sourceFile.c_str(), nullptr);
         } else if (language == "pypy") {
-            execl("/usr/bin/pypy3", "pypy3", sourceFile.c_str(), nullptr);
+            execl("/opt/sandbox/usr/bin/pypy3", "pypy3", sourceFile.c_str(), nullptr);
         }
 
         // 如果 execl 返回，说明执行失败
@@ -611,8 +610,8 @@ TestCaseResult CodeExecutor::executeJava(const std::string& workDir,
         // 切换到 .class 文件所在目录
         chdir(workDir.c_str());
 
-        // 执行 java Main
-        execlp("java", "java", "Main", nullptr);
+        // 执行 java Main - 使用沙箱中的 java
+        execl("/opt/sandbox/usr/bin/java", "java", "Main", nullptr);
 
         // 如果 execlp 返回，说明执行失败
         fprintf(stderr, "Failed to execute java\n");

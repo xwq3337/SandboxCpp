@@ -1,0 +1,30 @@
+{
+  "sandbox_root": "/opt/sandbox",
+  "bin_path": "/opt/sandbox/usr/bin",
+  "lib_path": "/opt/sandbox/usr/lib:/opt/sandbox/lib:/opt/sandbox/lib64",
+  "compilers": {
+    "gcc": "/opt/sandbox/usr/bin/gcc",
+    "g++": "/opt/sandbox/usr/bin/g++",
+    "javac": "/opt/sandbox/usr/bin/javac",
+    "java": "/opt/sandbox/usr/bin/java",
+    "go": "/opt/sandbox/usr/bin/go",
+    "rustc": "/opt/sandbox/usr/bin/rustc",
+    "zig": "/opt/sandbox/usr/bin/zig",
+    "mcs": "/opt/sandbox/usr/bin/mcs",
+    "mono": "/opt/sandbox/usr/bin/mono",
+    "python3": "/opt/sandbox/usr/bin/python3",
+    "node": "/opt/sandbox/usr/bin/node",
+    "npm": "/opt/sandbox/usr/bin/npm"
+  },
+  "versions": {
+    "generated_at": "2026-01-13T13:08:32+00:00",
+    "gcc": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.2) 11.4.0\n",
+    "python": "Python 3.10.12\n",
+    "java": "Error occurred during initialization of VM\n",
+    "go": "go: cannot determine current directory: getwd: no such file or directory\n未安装\n",
+    "rust": "error: Unable to proceed. Could not locate working directory.: No such file or directory (os error 2)\n未安装\n",
+    "node": "v25.2.1\n",
+    "zig": "0.16.0-dev.2187+e2338edb4\n",
+    "mono": "Mono JIT compiler version 6.8.0.105 (Debian 6.8.0.105+dfsg-3.2 Wed Jun 30 05:30:13 UTC 2021)\n"
+  }
+}

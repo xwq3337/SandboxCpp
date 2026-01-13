@@ -1,0 +1,11 @@
+export SANDBOX_ROOT="/opt/sandbox"
+${SANDBOX_ROOT}/usr/bin/gcc --version
+${SANDBOX_ROOT}/usr/bin/g++ --version
+${SANDBOX_ROOT}/usr/bin/python3 -V
+${SANDBOX_ROOT}/usr/bin/java -version
+${SANDBOX_ROOT}/usr/bin/go version
+${SANDBOX_ROOT}/usr/bin/rustc --version
+${SANDBOX_ROOT}/usr/bin/node --version
+${SANDBOX_ROOT}/usr/bin/zig version
+${SANDBOX_ROOT}/usr/bin/mcs --version
+${SANDBOX_ROOT}/usr/bin/javac --version
