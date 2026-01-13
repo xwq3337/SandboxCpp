@@ -17,14 +17,14 @@
     "npm": "/opt/sandbox/usr/bin/npm"
   },
   "versions": {
-    "generated_at": "2026-01-13T13:08:32+00:00",
-    "gcc": "gcc (Ubuntu 11.4.0-1ubuntu1~22.04.2) 11.4.0\n",
-    "python": "Python 3.10.12\n",
+    "generated_at": "2026-01-14T01:38:48+08:00",
+    "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\n",
+    "python": "Python 3.12.3\n",
     "java": "Error occurred during initialization of VM\n",
     "go": "go: cannot determine current directory: getwd: no such file or directory\n未安装\n",
     "rust": "error: Unable to proceed. Could not locate working directory.: No such file or directory (os error 2)\n未安装\n",
-    "node": "v25.2.1\n",
+    "node": "v25.3.0\n",
     "zig": "0.16.0-dev.2187+e2338edb4\n",
-    "mono": "Mono JIT compiler version 6.8.0.105 (Debian 6.8.0.105+dfsg-3.2 Wed Jun 30 05:30:13 UTC 2021)\n"
+    "mono": "Mono JIT compiler version 6.8.0.105 (Debian 6.8.0.105+dfsg-3.6ubuntu2 Sun Mar 31 02:55:28 UTC 2024)\n"
   }
 }

@@ -25,7 +25,7 @@ def test_language(name, language, code, test_input, expected):
     }
     
     try:
-        response = requests.post(f'{BASE_URL}/submit', json=data, timeout=10)
+        response = requests.post(f'{BASE_URL}/submit', json=data, timeout=20)
         result = response.json()
         
         status = result['result'][0]['status']

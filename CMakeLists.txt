@@ -10,16 +10,8 @@ add_compile_options(-Wall -Wextra -O2)
 # 查找依赖
 find_package(Threads REQUIRED)
 
-# nlohmann/json
-include(FetchContent)
-FetchContent_Declare(
-    json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.2
-)
-FetchContent_MakeAvailable(json)
-
 # httplib
+include(FetchContent)
 FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
@@ -45,9 +37,8 @@ set(SOURCES
 add_executable(code_runner ${SOURCES})
 
 # 链接库
-target_link_libraries(code_runner 
-    PRIVATE 
-    nlohmann_json::nlohmann_json
+target_link_libraries(code_runner
+    PRIVATE
     httplib::httplib
     Threads::Threads
     seccomp

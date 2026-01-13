@@ -63,7 +63,7 @@
     ]
   },
   "java": {
-    "compile_cmd": "javac {source}",
+    "compile_cmd": "javac --release 17 {source}",
     "run_cmd": "java -Xmx{memory}m -Xss{stack}m Main",
     "source_file": "Main.java",
     "allow_sys_calls": [
