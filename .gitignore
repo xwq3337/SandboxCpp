@@ -40,3 +40,6 @@ code_runner_*
 
 # Dependencies
 _deps/
+
+
+sandbox_paths.json
