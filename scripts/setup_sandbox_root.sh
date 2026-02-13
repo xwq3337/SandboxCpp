@@ -231,6 +231,19 @@ for dir in /usr/lib/gcc /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu /usr/lib
     fi
 done
 
+# 复制 libexec 目录（包含 cc1, cc1plus 等 GCC 内部编译器）
+log_info "复制 libexec 目录（GCC 内部编译器）..."
+if [ -d "/usr/libexec" ]; then
+    mkdir -p "$SANDBOX_ROOT/usr/libexec"
+    for gcc_libexec in /usr/libexec/gcc /usr/libexec/gcc/*; do
+        if [ -d "$gcc_libexec" ]; then
+            target_dir="$SANDBOX_ROOT$gcc_libexec"
+            mkdir -p "$target_dir"
+            cp -a "$gcc_libexec"/* "$target_dir/" 2>/dev/null || true
+        fi
+    done
+fi
+
 # 复制 C++ 标准库头文件
 log_info "复制 C++ 标准库头文件..."
 if [ -d "/usr/include/c++" ]; then
@@ -289,6 +302,35 @@ done
 
 log_info "Python 版本:"
 "$SANDBOX_ROOT/usr/bin/python3" --version 2>/dev/null || echo "  安装失败"
+
+##############################################################################
+# 4.5. 安装 PyPy
+##############################################################################
+log_step "安装 PyPy..."
+
+log_info "从 apt 安装 pypy3..."
+apt-get install -y -qq pypy3 pypy3-lib > /dev/null 2>&1 || {
+    log_warn "PyPy 安装失败"
+    PYPY_INSTALLED=false
+}
+
+if [ "$PYPY_INSTALLED" != "false" ]; then
+    # 复制到沙箱
+    log_info "复制 pypy3 到沙箱..."
+    cp -a /usr/bin/pypy* "$SANDBOX_ROOT/usr/bin/" 2>/dev/null || true
+
+    # 复制 PyPy 库
+    log_info "复制 PyPy 库文件..."
+    for dir in /usr/lib/pypy3; do
+        if [ -d "$dir" ]; then
+            mkdir -p "$SANDBOX_ROOT$(dirname "$dir")"
+            cp -rn "$dir" "$SANDBOX_ROOT$(dirname "$dir")/" 2>/dev/null || true
+        fi
+    done
+
+    log_info "PyPy 版本:"
+    "$SANDBOX_ROOT/usr/bin/pypy3" --version 2>/dev/null || echo "  安装失败"
+fi
 
 ##############################################################################
 # 5. 安装 Java (OpenJDK)

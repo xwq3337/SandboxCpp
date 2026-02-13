@@ -1,9 +1,14 @@
 import requests
 import json
+import argparse
 
-BASE_URL = "http://localhost:8080"
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='Code Runner 测试工具')
+    parser.add_argument('--port', type=int, default=8080, help='服务端口号 (默认: 8080)')
+    return parser.parse_args()
 
-def test_language(name, language, code, test_input, expected):
+def test_language(base_url, name, language, code, test_input, expected):
     """测试单个语言"""
     data = {
         'submission_id': 1,
@@ -25,7 +30,7 @@ def test_language(name, language, code, test_input, expected):
     }
     
     try:
-        response = requests.post(f'{BASE_URL}/submit', json=data, timeout=20)
+        response = requests.post(f'{base_url}/submit', json=data, timeout=20)
         result = response.json()
         
         status = result['result'][0]['status']
@@ -39,10 +44,22 @@ def test_language(name, language, code, test_input, expected):
         print(f"✗ {name:15} ({language:10}) - Error: {str(e)[:40]}")
         return False
 
-# 测试用例
-tests = [
-    # 现有语言
-    ("C++", "cpp", '''
+def main():
+    """主函数"""
+    # 解析命令行参数
+    args = parse_arguments()
+    BASE_URL = f"http://localhost:{args.port}"
+    
+    print(f"正在测试端口: {args.port}")
+    print("=" * 80)
+    print("Code Runner - 全部语言测试")
+    print("=" * 80)
+    print()
+
+    # 测试用例
+    tests = [
+        # 现有语言
+        ("C++", "cpp", '''
 #include <iostream>
 using namespace std;
 int main() {
@@ -53,7 +70,7 @@ int main() {
 }
 ''', "3 5", "8"),
 
-    ("C", "c", '''
+        ("C", "c", '''
 #include <stdio.h>
 int main() {
     int a, b;
@@ -63,12 +80,12 @@ int main() {
 }
 ''', "7 2", "9"),
 
-    ("Python", "python", '''
+        ("Python", "python", '''
 a, b = map(int, input().split())
 print(a + b)
 ''', "4 6", "10"),
 
-    ("Java", "java", '''
+        ("Java", "java", '''
 import java.util.Scanner;
 
 public class Main {
@@ -81,7 +98,7 @@ public class Main {
 }
 ''', "5 3", "8"),
 
-    ("Go", "go", '''
+        ("Go", "go", '''
 package main
 
 import "fmt"
@@ -93,7 +110,7 @@ func main() {
 }
 ''', "9 7", "16"),
 
-    ("Rust", "rust", '''
+        ("Rust", "rust", '''
 use std::io;
 
 fn main() {
@@ -107,8 +124,8 @@ fn main() {
 }
 ''', "11 9", "20"),
 
-    # 新语言
-    ("JavaScript", "javascript", '''
+        # 新语言
+        ("JavaScript", "javascript", '''
 const readline = require('readline');
 const rl = readline.createInterface({
     input: process.stdin,
@@ -122,8 +139,8 @@ rl.on('line', (line) => {
 });
 ''', "6 4", "10"),
 
-    # 新增语言
-    ("C#", "csharp", '''
+        # 新增语言
+        ("C#", "csharp", '''
 using System;
 
 class Program {
@@ -136,7 +153,7 @@ class Program {
 }
 ''', "8 2", "10"),
 
-    ("Zig", "zig", '''
+        ("Zig", "zig", '''
 const std = @import("std");
 
 pub fn main() !void {
@@ -144,27 +161,25 @@ pub fn main() !void {
 }
 ''', "", "8"),
 
-    ("PyPy", "pypy", '''
+        ("PyPy", "pypy", '''
 a, b = map(int, input().split())
 print(a + b)
 ''', "3 8", "11"),
-]
+    ]
 
-print("=" * 80)
-print("Code Runner - 全部语言测试")
-print("=" * 80)
-print()
+    passed = 0
+    total = len(tests)
 
-passed = 0
-total = len(tests)
+    for name, lang, code, input_val, expected in tests:
+        if test_language(BASE_URL, name, lang, code, input_val, expected):
+            passed += 1
 
-for name, lang, code, input_val, expected in tests:
-    if test_language(name, lang, code, input_val, expected):
-        passed += 1
+    print()
+    print("=" * 80)
+    print(f"测试结果: {passed}/{total} 通过")
+    if passed == total:
+        print("🎉 所有测试通过!")
+    print("=" * 80)
 
-print()
-print("=" * 80)
-print(f"测试结果: {passed}/{total} 通过")
-if passed == total:
-    print("🎉 所有测试通过!")
-print("=" * 80)
+if __name__ == "__main__":
+    main()
