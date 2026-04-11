@@ -32,6 +32,7 @@ set(SOURCES
     src/code_executor.cpp
     src/web_server.cpp
     src/stats_collector.cpp
+    src/compile_cache.cpp
 )
 
 # 可执行文件

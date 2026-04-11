@@ -16,8 +16,8 @@
 #include <chrono>
 #include <algorithm>
 
-CodeExecutor::CodeExecutor() {
-    // 构造函数
+CodeExecutor::CodeExecutor()
+    : compileCache_("/tmp/code_runner_cache") {
 }
 
 void CodeExecutor::loadLanguageConfigs(const std::string& configPath) {
@@ -133,6 +133,17 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
         return Verdict::Accepted;
     }
 
+    // 尝试从编译缓存获取
+    if (compileCache_.get(language, code, config.compile_cmd, workDir)) {
+        // 缓存命中，直接设置编译产物路径
+        if (language == "java") {
+            compiledPath = workDir;
+        } else {
+            compiledPath = workDir + "/main";
+        }
+        return Verdict::Accepted;
+    }
+
     std::string outputFile = workDir + "/main";
 
     // 构建编译命令
@@ -220,6 +231,9 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
         }
         return Verdict::CompilationError;
     }
+
+    // 编译成功，存入缓存
+    compileCache_.put(language, code, config.compile_cmd, workDir);
 
     // 对于 Java，compiledPath 保存工作目录，因为 java 需要从 .class 文件所在目录运行
     if (language == "java") {

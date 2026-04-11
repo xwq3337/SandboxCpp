@@ -1,21 +1,23 @@
 #pragma once
 
 #include "data_structures.h"
+#include "compile_cache.h"
 #include <string>
 #include <map>
 
 class CodeExecutor {
 public:
     CodeExecutor();
-    
+
     // 加载语言配置
     void loadLanguageConfigs(const std::string& configPath);
-    
+
     // 执行代码
     OutputResult execute(const InputStruct& input);
-    
+
 private:
     std::map<std::string, LanguageConfig> languageConfigs_;
+    CompileCache compileCache_;
     
     // 编译代码
     Verdict compile(const std::string& language, const std::string& code, 

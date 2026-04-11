@@ -7,6 +7,7 @@ add_executable(code_runner_tests
     ${CMAKE_SOURCE_DIR}/src/namespace_isolation.cpp
     ${CMAKE_SOURCE_DIR}/src/cgroup_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/seccomp_filter.cpp
+    ${CMAKE_SOURCE_DIR}/src/compile_cache.cpp
 )
 
 target_link_libraries(code_runner_tests
