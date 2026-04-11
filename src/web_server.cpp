@@ -14,6 +14,10 @@ WebServer::WebServer(int port) : port_(port) {
         handleHealth(req, res);
     });
 
+    server_->Get("/stats", [this](const httplib::Request& req, httplib::Response& res) {
+        handleStats(req, res);
+    });
+
     // 加载语言配置
     std::string configPath = std::filesystem::path(__FILE__).parent_path().parent_path() / "config" / "languages.json";
     executor_.loadLanguageConfigs(configPath);
@@ -40,6 +44,9 @@ void WebServer::handleSubmit(const httplib::Request& req, httplib::Response& res
 
         // 执行代码
         OutputResult output = executor_.execute(input);
+
+        // 记录统计
+        stats_.record(output);
 
         // 返回结果
         json responseJson = output;
@@ -78,4 +85,8 @@ void WebServer::handleHealth(const httplib::Request& req, httplib::Response& res
         {"service", "code_runner"}
     };
     res.set_content(healthJson.dump(2), "application/json");
+}
+
+void WebServer::handleStats(const httplib::Request& req, httplib::Response& res) {
+    res.set_content(stats_.toJson().dump(2), "application/json");
 }

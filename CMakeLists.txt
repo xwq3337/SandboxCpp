@@ -31,6 +31,7 @@ set(SOURCES
     src/cgroup_manager.cpp
     src/code_executor.cpp
     src/web_server.cpp
+    src/stats_collector.cpp
 )
 
 # 可执行文件
@@ -43,6 +44,20 @@ target_link_libraries(code_runner
     Threads::Threads
     seccomp
 )
+
+# Google Test
+enable_testing()
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.14.0
+)
+# 防止在 Windows MinGW 上覆盖父项目的编译器/链接器设置
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# 测试
+add_subdirectory(test)
 
 # 安装
 install(TARGETS code_runner DESTINATION bin)

@@ -61,7 +61,20 @@ make -j$(nproc)
 # 安装（可选）
 sudo make install
 ```
+## 测试
 
+```shell
+# 构建
+cd build && cmake .. && make -j$(nproc) 
+# 运行测试  
+ctest --output-on-failure
+ctest -V 
+# 或直接运行测试二进制                
+./test/code_runner_tests
+./test/code_runner_tests --gtest_filter=LanguagesTest.TestPython
+```
+
+后续新增测试只需在 `test/` 目录下添加 `.cpp` 文件，然后在 `test/CMakeLists.txt` 的 `add_executable` 中加入对应源文件即可。
 ## 运行服务器
 
 ```bash

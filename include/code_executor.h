@@ -23,11 +23,13 @@ private:
     
     // 运行单个测试用例
     TestCaseResult runTestCase(const std::string& language, const std::string& execPath,
+                               const std::string& workDir,
                                const TestCase& testCase, const ResourcesLimits& limits,
                                const std::vector<std::string>& allowedSyscalls);
-    
+
     // 在沙箱中执行
-    TestCaseResult executeInSandbox(const std::string& execPath, const TestCase& testCase,
+    TestCaseResult executeInSandbox(const std::string& execPath, const std::string& workDir,
+                                    const TestCase& testCase,
                                     const ResourcesLimits& limits,
                                     const std::vector<std::string>& allowedSyscalls);
     
@@ -40,6 +42,11 @@ private:
     TestCaseResult executeJava(const std::string& workDir, const TestCase& testCase,
                               const ResourcesLimits& limits,
                               const std::vector<std::string>& allowedSyscalls);
+
+    // 执行 C# (Mono) 程序
+    TestCaseResult executeCSharp(const std::string& execPath, const TestCase& testCase,
+                                 const ResourcesLimits& limits,
+                                 const std::vector<std::string>& allowedSyscalls);
 
     // 比较输出
     bool compareOutput(const std::string& output, const std::string& expected);

@@ -1,6 +1,6 @@
 {
   "cpp": {
-    "compile_cmd": "g++ -O2 -std=c++17 -o {output} {source}",
+    "compile_cmd": "g++ -O2 -std=c++17 -o {output} {source} -lm",
     "run_cmd": "{output}",
     "source_file": "main.cpp",
     "allow_sys_calls": [

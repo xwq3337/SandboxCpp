@@ -11,6 +11,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sched.h>
 #include <chrono>
 #include <algorithm>
@@ -80,7 +81,7 @@ OutputResult CodeExecutor::execute(const InputStruct& input) {
 
     for (const auto& testCase : input.test_cases) {
         TestCaseResult result = runTestCase(input.language, compiledPath,
-                                            testCase, input.resources_limits,
+                                            workDir, testCase, input.resources_limits,
                                             allowedSyscalls);
 
         output.result.push_back(result);
@@ -166,16 +167,34 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
         const char* newLibPath = "/opt/sandbox/usr/lib:/opt/sandbox/lib:/opt/sandbox/lib64:/opt/sandbox/usr/local/lib";
         setenv("LD_LIBRARY_PATH", newLibPath, 1);
 
-        // 设置 HOME 环境变量,因为 rustup 需要
-        // 如果当前 HOME 是 /root (sudo 环境),改为 ubuntu 用户的 home
+        // 设置 HOME 环境变量
+        // go/zig/rustc/java/mono 等工具都依赖 HOME 来定位缓存目录
         const char* currentHome = getenv("HOME");
-        if (currentHome && strcmp(currentHome, "/root") == 0) {
+        if (!currentHome || strcmp(currentHome, "/root") == 0) {
             setenv("HOME", "/home/ubuntu", 1);
         }
 
         // 设置 Rust 环境变量，指向沙箱中的 rustup
         setenv("RUSTUP_HOME", "/opt/sandbox/usr/local/rustup", 1);
         setenv("CARGO_HOME", "/opt/sandbox/usr/local/cargo", 1);
+
+        // Go 构建缓存目录
+        setenv("GOCACHE", "/tmp/go-build-cache", 1);
+
+        // Zig 全局缓存目录
+        setenv("ZIG_GLOBAL_CACHE_DIR", "/tmp/zig-cache", 1);
+
+        // XDG 标准缓存目录（通用 fallback）
+        setenv("XDG_CACHE_HOME", "/tmp/xdg-cache", 1);
+
+        // 确保缓存目录存在
+        mkdir("/tmp/go-build-cache", 0755);
+        mkdir("/tmp/zig-cache", 0755);
+        mkdir("/tmp/xdg-cache", 0755);
+
+        // 切换到工作目录，确保 CWD 有效
+        // go/rustc/java 等工具启动时会调用 getcwd()，如果 CWD 不存在会直接报错
+        chdir(workDir.c_str());
 
         // 执行编译命令
         ret = system(compileCmd.c_str());
@@ -213,6 +232,7 @@ Verdict CodeExecutor::compile(const std::string& language, const std::string& co
 
 TestCaseResult CodeExecutor::runTestCase(const std::string& language,
                                          const std::string& execPath,
+                                         const std::string& workDir,
                                          const TestCase& testCase,
                                          const ResourcesLimits& limits,
                                          const std::vector<std::string>& allowedSyscalls) {
@@ -222,15 +242,21 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
         return executeJava(execPath, testCase, limits, allowedSyscalls);
     }
 
+    // C# 需要特殊处理：用 mono 运行编译后的 .exe
+    if (language == "csharp") {
+        return executeCSharp(execPath, testCase, limits, allowedSyscalls);
+    }
+
     // 检查是否需要使用解释器
     if (languageConfigs_.count(language) && languageConfigs_[language].compile_cmd.empty()) {
         // 解释型语言（如 Python）
         return executeInterpreted(language, execPath, testCase, limits, allowedSyscalls);
     }
     // 编译型语言
-    return executeInSandbox(execPath, testCase, limits, allowedSyscalls);
+    return executeInSandbox(execPath, workDir, testCase, limits, allowedSyscalls);
 }
 TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
+                                              const std::string& workDir,
                                               const TestCase& testCase,
                                               const ResourcesLimits& limits,
                                               const std::vector<std::string>& allowedSyscalls) {
@@ -279,6 +305,9 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
         // 文件大小限制
         rlim.rlim_cur = rlim.rlim_max = limits.output_bytes;
         setrlimit(RLIMIT_FSIZE, &rlim);
+
+        // 切换到可执行文件所在目录，确保 CWD 有效
+        chdir(workDir.c_str());
 
         // 重定向标准输入输出
         close(stdin_pipe[1]);
@@ -693,6 +722,123 @@ TestCaseResult CodeExecutor::executeJava(const std::string& workDir,
         close(stdout_pipe[1]);
         close(stderr_pipe[0]);
         close(stderr_pipe[1]);
+    }
+
+    return result;
+}
+
+TestCaseResult CodeExecutor::executeCSharp(const std::string& execPath,
+                                           const TestCase& testCase,
+                                           const ResourcesLimits& limits,
+                                           const std::vector<std::string>& allowedSyscalls) {
+    TestCaseResult result;
+    result.case_id = std::to_string(testCase.case_id);
+    result.stdin = testCase.stdin;
+    result.expected = testCase.expected;
+    result.status = Verdict::SystemError;
+    result.time = 0;
+    result.memory = 0;
+
+    int stdin_pipe[2], stdout_pipe[2], stderr_pipe[2];
+    if (pipe(stdin_pipe) < 0 || pipe(stdout_pipe) < 0 || pipe(stderr_pipe) < 0) {
+        result.stderr = "Failed to create pipes";
+        return result;
+    }
+
+    std::string cgroupName = "code_runner_" + std::to_string(getpid()) + "_" + result.case_id;
+    CgroupManager cgroup(cgroupName);
+    cgroup.setMemoryLimit(limits.memory_bytes);
+    cgroup.setPidsLimit(50);
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        cgroup.addProcess(getpid());
+
+        struct rlimit rlim;
+        rlim.rlim_cur = rlim.rlim_max = (limits.cpu_time + 999) / 1000;
+        setrlimit(RLIMIT_CPU, &rlim);
+        rlim.rlim_cur = rlim.rlim_max = limits.stack_bytes;
+        setrlimit(RLIMIT_STACK, &rlim);
+        rlim.rlim_cur = rlim.rlim_max = limits.output_bytes;
+        setrlimit(RLIMIT_FSIZE, &rlim);
+
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stderr_pipe[0]);
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stderr_pipe[1], STDERR_FILENO);
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
+
+        const char* newPath = "/opt/sandbox/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+        setenv("PATH", newPath, 1);
+        setenv("HOME", "/home/ubuntu", 1);
+        setenv("MONO_ENV_OPTIONS", "", 1);
+
+        execl("/opt/sandbox/usr/bin/mono", "mono", execPath.c_str(), nullptr);
+
+        fprintf(stderr, "Failed to execute mono\n");
+        exit(1);
+    } else if (pid > 0) {
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
+
+        write(stdin_pipe[1], testCase.stdin.c_str(), testCase.stdin.length());
+        close(stdin_pipe[1]);
+
+        char buffer[4096];
+        ssize_t n;
+        while ((n = read(stdout_pipe[0], buffer, sizeof(buffer))) > 0) {
+            result.stdout.append(buffer, n);
+            if (result.stdout.length() > (size_t)limits.output_bytes) {
+                kill(pid, SIGKILL);
+                result.status = Verdict::RuntimeError;
+                result.stderr = "Output limit exceeded";
+                break;
+            }
+        }
+        close(stdout_pipe[0]);
+
+        while ((n = read(stderr_pipe[0], buffer, sizeof(buffer))) > 0) {
+            result.stderr.append(buffer, n);
+        }
+        close(stderr_pipe[0]);
+
+        int status;
+        wait4(pid, &status, 0, nullptr);
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        result.time = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+        result.memory = cgroup.getMemoryUsage();
+
+        if (WIFEXITED(status)) {
+            if (WEXITSTATUS(status) == 0) {
+                result.status = compareOutput(result.stdout, testCase.expected)
+                    ? Verdict::Accepted : Verdict::WrongAnswer;
+            } else {
+                result.status = Verdict::RuntimeError;
+            }
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            if (sig == SIGXCPU || result.time > limits.cpu_time) {
+                result.status = Verdict::TimeLimitExceeded;
+            } else if (sig == SIGKILL && result.memory > (size_t)limits.memory_bytes) {
+                result.status = Verdict::MemoryLimitExceeded;
+            } else {
+                result.status = Verdict::RuntimeError;
+            }
+        }
+    } else {
+        result.stderr = "Failed to fork process";
+        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        close(stderr_pipe[0]); close(stderr_pipe[1]);
     }
 
     return result;
