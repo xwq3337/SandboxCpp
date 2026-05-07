@@ -30,7 +30,8 @@ private:
                                const std::vector<std::string>& allowedSyscalls);
 
     // 在沙箱中执行
-    TestCaseResult executeInSandbox(const std::string& execPath, const std::string& workDir,
+    TestCaseResult executeInSandbox(const std::string& language, const std::string& execPath,
+                                    const std::string& workDir,
                                     const TestCase& testCase,
                                     const ResourcesLimits& limits,
                                     const std::vector<std::string>& allowedSyscalls);

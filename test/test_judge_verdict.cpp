@@ -117,13 +117,13 @@ TEST_F(VerdictTest, TestMultipleTestCasesPartialFailure)
 TEST_F(VerdictTest, TestMemoryLimitExceeded)
 {
     // 测试内存超限导致 MemoryLimitExceeded
-    // 分配 100MB vector 并初始化所有元素，cgroup OOM killer 会 SIGKILL 进程
+    // RLIMIT_AS=50MB (memory_bytes)，分配 80MB → bad_alloc → SIGABRT → MLE
     InputStruct input{
         0,
         "cpp",
-        "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    volatile int n = 25 * 1024 * 1024; // 避免编译器优化\n    vector<int> v(n, 42); // 25M * 4bytes = 100MB\n    cout << v[0] << endl;\n    return 0;\n}",
+        "#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    volatile int n = 20 * 1024 * 1024; // 避免编译器优化\n    vector<int> v(n, 42); // 20M * 4bytes = 80MB，超过 50MB AS 限制\n    cout << v[0] << endl;\n    return 0;\n}",
         {{1, "", ""}},
-        {1000, 20971520, 8388608, 1048576}, // 20MB 内存限制，小于分配的 100MB
+        {1000, 52428800, 8388608, 1048576}, // 50MB 内存限制，小于分配的 80MB
         "",
         ""};
     OutputResult output = executor_.execute(input);

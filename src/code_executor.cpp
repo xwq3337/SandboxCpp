@@ -277,9 +277,10 @@ TestCaseResult CodeExecutor::runTestCase(const std::string& language,
         return executeInterpreted(language, execPath, testCase, limits, allowedSyscalls);
     }
     // 编译型语言
-    return executeInSandbox(execPath, workDir, testCase, limits, allowedSyscalls);
+    return executeInSandbox(language, execPath, workDir, testCase, limits, allowedSyscalls);
 }
-TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
+TestCaseResult CodeExecutor::executeInSandbox(const std::string& language,
+                                              const std::string& execPath,
                                               const std::string& workDir,
                                               const TestCase& testCase,
                                               const ResourcesLimits& limits,
@@ -331,8 +332,9 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
         setrlimit(RLIMIT_FSIZE, &rlim);
 
         // 虚拟地址空间限制（作为 cgroup 内存限制的补充/fallback）
-        // 仅在显式设置低内存限制（<100MB）时启用，避免影响 Go/Java 等需要大地址空间的运行时
-        if (limits.memory_bytes < 104857600) {
+        // 仅对运行时轻量的编译型语言（C/C++/Zig）启用，Go/Rust 运行时需要大地址空间
+        if (limits.memory_bytes < 104857600 &&
+            (language == "cpp" || language == "c" || language == "zig")) {
             rlim.rlim_cur = rlim.rlim_max = limits.memory_bytes;
             setrlimit(RLIMIT_AS, &rlim);
         }
