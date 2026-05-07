@@ -70,9 +70,19 @@ OutputResult CodeExecutor::execute(const InputStruct& input) {
     }
 
     // 运行测试用例
+    // 当 seccomp_profile 非空时，将其解析为 JSON 数组作为自定义 syscall 白名单
+    // 当 seccomp_profile 为空时，使用默认列表（不安装 seccomp 过滤器）
     std::vector<std::string> allowedSyscalls;
-    if (!input.seccomp_profile.empty() && languageConfigs_.count(input.language)) {
-        allowedSyscalls = languageConfigs_[input.language].allow_sys_calls;
+    if (!input.seccomp_profile.empty()) {
+        try {
+            json profile = json::parse(input.seccomp_profile);
+            if (profile.is_array()) {
+                allowedSyscalls = profile.get<std::vector<std::string>>();
+            }
+        } catch (const std::exception& e) {
+            fprintf(stderr, "Failed to parse seccomp_profile: %s\n", e.what());
+            allowedSyscalls = SeccompFilter::getDefaultAllowedSyscalls();
+        }
     } else {
         allowedSyscalls = SeccompFilter::getDefaultAllowedSyscalls();
     }
@@ -320,6 +330,13 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
         rlim.rlim_cur = rlim.rlim_max = limits.output_bytes;
         setrlimit(RLIMIT_FSIZE, &rlim);
 
+        // 虚拟地址空间限制（作为 cgroup 内存限制的补充/fallback）
+        // 仅在显式设置低内存限制（<100MB）时启用，避免影响 Go/Java 等需要大地址空间的运行时
+        if (limits.memory_bytes < 104857600) {
+            rlim.rlim_cur = rlim.rlim_max = limits.memory_bytes;
+            setrlimit(RLIMIT_AS, &rlim);
+        }
+
         // 切换到可执行文件所在目录，确保 CWD 有效
         chdir(workDir.c_str());
 
@@ -336,11 +353,16 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
 
-        // 安装 seccomp 过滤器（暂时禁用以调试）
-        // if (SeccompFilter::installFilter(allowedSyscalls) != 0) {
-        //     fprintf(stderr, "Failed to install seccomp filter\n");
-        //     exit(1);
-        // }
+        // 安装 seccomp 过滤器：仅当 allowedSyscalls 非空且不是默认列表时启用
+        // 默认列表意味着未显式指定 seccomp_profile，此时不安装过滤器
+        static const std::vector<std::string> defaultSyscalls =
+            SeccompFilter::getDefaultAllowedSyscalls();
+        if (!allowedSyscalls.empty() && allowedSyscalls != defaultSyscalls) {
+            if (SeccompFilter::installFilter(allowedSyscalls) != 0) {
+                fprintf(stderr, "Failed to install seccomp filter\n");
+                exit(1);
+            }
+        }
 
         // 执行程序
         execl(execPath.c_str(), execPath.c_str(), nullptr);
@@ -389,6 +411,10 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
 
         result.time = duration.count();
         result.memory = cgroup.getMemoryUsage();
+        // 如果 cgroup 未返回内存使用量，使用 rusage 作为 fallback
+        if (result.memory == 0 && usage.ru_maxrss > 0) {
+            result.memory = usage.ru_maxrss * 1024; // ru_maxrss 单位是 KB
+        }
 
         // 判断执行结果
         if (WIFEXITED(status)) {
@@ -410,6 +436,11 @@ TestCaseResult CodeExecutor::executeInSandbox(const std::string& execPath,
             } else if (sig == SIGSYS) {
                 result.status = Verdict::RestrictedSystemCall;
             } else if (sig == SIGKILL && result.memory > (size_t)limits.memory_bytes) {
+                result.status = Verdict::MemoryLimitExceeded;
+            } else if (sig == SIGABRT && limits.memory_bytes < 104857600) {
+                // RLIMIT_AS 导致的 OOM：new/malloc 失败 -> abort() -> SIGABRT
+                // 仅当显式设置了低内存限制（<100MB）时判定为 MLE
+                // 正常的 abort() 不会设置这么低的内存限制
                 result.status = Verdict::MemoryLimitExceeded;
             } else {
                 result.status = Verdict::RuntimeError;
@@ -494,11 +525,15 @@ TestCaseResult CodeExecutor::executeInterpreted(const std::string& language,
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
 
-        // 安装 seccomp 过滤器（暂时禁用以调试）
-        // if (SeccompFilter::installFilter(allowedSyscalls) != 0) {
-        //     fprintf(stderr, "Failed to install seccomp filter\n");
-        //     exit(1);
-        // }
+        // 安装 seccomp 过滤器：仅当 allowedSyscalls 非空且不是默认列表时启用
+        static const std::vector<std::string> defaultSyscalls =
+            SeccompFilter::getDefaultAllowedSyscalls();
+        if (!allowedSyscalls.empty() && allowedSyscalls != defaultSyscalls) {
+            if (SeccompFilter::installFilter(allowedSyscalls) != 0) {
+                fprintf(stderr, "Failed to install seccomp filter\n");
+                exit(1);
+            }
+        }
 
         // 执行解释器 - 使用沙箱中的解释器
         if (language == "python") {

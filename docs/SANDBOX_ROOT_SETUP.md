@@ -1,59 +1,123 @@
-# 沙箱虚拟系统构建指南
+# 虚拟 Linux 根文件系统构建指南
 
 ## 概述
 
-本文档说明如何为代码执行沙箱构建一个虚拟 Linux 根文件系统，解决编译器/解释器路径分散的问题。
+为代码执行沙箱构建一个统一的虚拟 Linux 根文件系统，将所有编译器/解释器/运行时集中到 `/opt/sandbox/` 目录下，解决多语言工具链路径分散、环境依赖不一致的问题。
 
-## 问题背景
+## 设计目标
 
-当前沙箱代码中硬编码了多个解释器路径：
-- `/usr/bin/python3`
-- `/usr/bin/node`
-- `/usr/bin/pypy3`
-- `java` (使用 execlp 查找)
+1. **统一路径**：所有编译器、解释器、运行时固定于 `/opt/sandbox/usr/bin/`
+2. **库依赖完整**：复制必要的共享库到 `/opt/sandbox/usr/lib/`、`/opt/sandbox/lib/`
+3. **可移植**：整个目录可复制到其他同架构 Linux 系统直接使用
+4. **与 host 隔离**：通过受控的 PATH 和 LD_LIBRARY_PATH 指向沙箱目录
 
-同时，不同语言的编译器分散在系统的不同位置：
-- gcc/g++: `/usr/bin/`
-- go: `/usr/local/go/bin/`
-- rustc: `~/.cargo/bin/`
-- zig: `~/.zig/`
-
-这导致：
-1. 环境依赖性强，移植困难
-2. 不同系统配置差异大
-3. 编译时需要复杂的 PATH 设置
-
-## 解决方案
-
-构建一个虚拟根文件系统，将所有编译器/解释器统一到固定的相对路径下。
+## 目录结构
 
 ```
 /opt/sandbox/
-├── bin/          # 基本工具 (bash, sh, cat, ls 等)
+├── bin/                    # 基本工具 (符号链接)
+│   ├── bash -> /bin/bash
+│   └── sh -> /bin/sh
 ├── usr/
-│   └── bin/      # 所有编译器和解释器
-│       ├── gcc
-│       ├── g++
-│       ├── javac
-│       ├── java
-│       ├── go
-│       ├── rustc
-│       ├── zig
-│       ├── python3
-│       ├── pypy3
-│       ├── node
-│       ├── mcs
-│       └── mono
-├── lib/          # 必要的系统库
-├── lib64/
-├── etc/          # 配置文件
-└── home/
-    └── workspace/ # 工作目录
+│   ├── bin/                # 编译器、解释器 (符号链接)
+│   │   ├── gcc -> /usr/bin/gcc
+│   │   ├── g++ -> /usr/bin/g++
+│   │   ├── g++-13 -> /usr/bin/g++-13
+│   │   ├── aarch64-linux-gnu-g++-13 -> /usr/bin/aarch64-linux-gnu-g++-13
+│   │   ├── cc1plus          (从 g++ 依赖复制)
+│   │   ├── cc1              (从 gcc 依赖复制)
+│   │   ├── python3 -> /usr/bin/python3
+│   │   ├── pypy3 -> /usr/bin/pypy3
+│   │   ├── node -> /usr/local/node/bin/node
+│   │   ├── java -> /usr/bin/java
+│   │   ├── javac -> /usr/bin/javac
+│   │   ├── go -> /usr/local/go/bin/go
+│   │   ├── rustc -> ~/.cargo/bin/rustc
+│   │   ├── zig -> ~/.zig/zig
+│   │   ├── mcs -> /usr/bin/mcs
+│   │   └── mono -> /usr/bin/mono
+│   ├── lib/                # 共享库
+│   │   ├── aarch64-linux-gnu/
+│   │   │   ├── libc.so.6
+│   │   │   ├── libm.so.6
+│   │   │   ├── libstdc++.so.6
+│   │   │   └── ...
+│   │   └── ...
+│   ├── lib64/
+│   │   └── ld-linux-aarch64.so.1
+│   ├── local/
+│   │   ├── go/             # Go 工具链
+│   │   ├── node/           # Node.js 运行时
+│   │   ├── zig/            # Zig 编译器
+│   │   ├── cargo/          # Rust 包管理器
+│   │   └── rustup/         # Rust 工具链管理器
+│   └── share/              # 共享数据文件
+├── etc/                    # 基本配置文件
+│   ├── passwd
+│   ├── group
+│   └── hosts
+├── home/
+│   └── ubuntu/             # HOME 目录
+├── tmp/                    # 临时文件
+└── proc/                   # proc 挂载点
 ```
 
-## 使用方法
+## 在当前代码中的使用
 
-### 1. 构建虚拟系统
+项目代码中已经硬编码了沙箱路径。主要在以下位置：
+
+### 编译阶段 (`code_executor.cpp` — `compile()`)
+
+```cpp
+// PATH 设置（fork 后编译子进程中）
+const char* newPath = "/opt/sandbox/usr/bin:"
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:"
+    "/opt/sandbox/usr/local/go/bin:"
+    "/opt/sandbox/usr/local/node/bin:"
+    "/opt/sandbox/usr/local/zig:"
+    "/opt/sandbox/usr/local/cargo/bin";
+
+// 库搜索路径
+const char* newLibPath = "/opt/sandbox/usr/lib:"
+    "/opt/sandbox/lib:/opt/sandbox/lib64:"
+    "/opt/sandbox/usr/local/lib";
+
+// 环境变量
+setenv("RUSTUP_HOME", "/opt/sandbox/usr/local/rustup", 1);
+setenv("CARGO_HOME", "/opt/sandbox/usr/local/cargo", 1);
+```
+
+### 执行阶段 (`code_executor.cpp` — `executeInterpreted()`)
+
+```cpp
+// 解释型语言使用沙箱中的解释器
+if (language == "python") {
+    execl("/opt/sandbox/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
+} else if (language == "javascript") {
+    execl("/opt/sandbox/usr/bin/node", "node", sourceFile.c_str(), nullptr);
+} else if (language == "pypy") {
+    execl("/opt/sandbox/usr/bin/pypy3", "pypy3", sourceFile.c_str(), nullptr);
+}
+```
+
+### C#/Mono 执行 (`executeCSharp()`)
+
+```cpp
+const char* newPath = "/opt/sandbox/usr/bin:/usr/local/sbin:/usr/local/bin:"
+    "/usr/sbin:/usr/bin:/sbin:/bin";
+setenv("PATH", newPath, 1);
+execl("/opt/sandbox/usr/bin/mono", "mono", execPath.c_str(), nullptr);
+```
+
+### Java 执行 (`executeJava()`)
+
+```cpp
+execl("/opt/sandbox/usr/bin/java", "java", "Main", nullptr);
+```
+
+## 构建步骤
+
+### 使用自动化脚本
 
 ```bash
 # 使用默认路径 /opt/sandbox
@@ -63,224 +127,89 @@ sudo ./scripts/setup_sandbox_root.sh
 sudo ./scripts/setup_sandbox_root.sh /path/to/sandbox
 ```
 
-脚本会自动：
-1. 创建目录结构
-2. 查找系统中的编译器/解释器
-3. 创建符号链接到 `usr/bin/`
-4. 复制必要的库文件
-5. 生成配置文件
-
-### 2. 设置环境变量
+### 手动构建
 
 ```bash
-# 在编译/运行沙箱程序前执行
-source scripts/sandbox_env.sh
+# 1. 创建目录结构
+SANDBOX=/opt/sandbox
+sudo mkdir -p $SANDBOX/{bin,usr/{bin,lib,local/{go,node,zig,cargo,rustup}},lib64,etc,home/ubuntu,tmp,proc}
+
+# 2. 创建编译器/解释器符号链接
+sudo ln -sf /usr/bin/gcc $SANDBOX/usr/bin/gcc
+sudo ln -sf /usr/bin/g++ $SANDBOX/usr/bin/g++
+sudo ln -sf /usr/bin/python3 $SANDBOX/usr/bin/python3
+sudo ln -sf /usr/bin/java $SANDBOX/usr/bin/java
+# ... 其他语言
+
+# 3. 复制必要的共享库
+sudo cp -r /lib/aarch64-linux-gnu $SANDBOX/lib/
+sudo cp /lib64/ld-linux-aarch64.so.1 $SANDBOX/lib64/
+
+# 4. 复制编译器内部工具
+GCC_LIB=$(g++ -print-search-dirs | grep install | cut -d' ' -f2)
+sudo cp $GCC_LIB/cc1plus $SANDBOX/usr/bin/
+sudo cp $GCC_LIB/cc1 $SANDBOX/usr/bin/
+
+# 5. 创建基本配置文件
+echo "root:x:0:0:root:/root:/bin/bash" | sudo tee $SANDBOX/etc/passwd
+echo "root:x:0:" | sudo tee $SANDBOX/etc/group
+echo "127.0.0.1 localhost" | sudo tee $SANDBOX/etc/hosts
+
+# 6. 设置目录权限
+sudo chmod 1777 $SANDBOX/tmp
+sudo chmod 755 $SANDBOX/usr/bin
 ```
 
-这会设置以下环境变量：
-- `SANDBOX_ROOT`: 虚拟系统根目录
-- `SANDBOX_PATH`: 虚拟系统的可执行文件路径
-- `SANDBOX_LD_LIBRARY_PATH`: 虚拟系统的库路径
+## 验证构建
 
-### 3. 在代码中使用
+```bash
+# 验证编译器可用
+PATH=/opt/sandbox/usr/bin:$PATH g++ --version
 
-#### 方法 A: 修改 code_executor.cpp
+# 验证解释器可用
+/opt/sandbox/usr/bin/python3 --version
 
-在编译时设置 PATH 和库路径：
-
-```cpp
-// 在 compile() 函数中修改环境变量设置
-const char* newPath = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                     ":/usr/local/go/bin:/snap/bin"
-                     ":/home/ubuntu/.cargo/bin:/home/ubuntu/.zig";
-
-// 改为使用沙箱路径
-const char* sandboxRoot = getenv("SANDBOX_ROOT") ?: "/opt/sandbox";
-std::string sandboxPath = std::string(sandboxRoot) + "/usr/bin";
-std::string newPath = "PATH=" + sandboxPath + ":/bin:/usr/bin";
-setenv("PATH", newPath.c_str(), 1);
+# 验证库依赖
+ldd /opt/sandbox/usr/bin/g++
 ```
 
-#### 方法 B: 修改 languages.json
+## 支持的架构
 
-将所有编译命令改为使用绝对路径：
+当前沙箱支持两种 CPU 架构：
 
-```json
-{
-  "cpp": {
-    "compile_cmd": "/opt/sandbox/usr/bin/g++ -O2 -std=c++17 -o {output} {source}",
-    "run_cmd": "{output}",
-    "source_file": "main.cpp"
-  },
-  "python": {
-    "compile_cmd": "",
-    "run_cmd": "/opt/sandbox/usr/bin/python3 {source}",
-    "source_file": "main.py"
-  }
-}
-```
-
-或者使用环境变量占位符：
-
-```json
-{
-  "cpp": {
-    "compile_cmd": "$SANDBOX/usr/bin/g++ -O2 -std=c++17 -o {output} {source}",
-    "run_cmd": "{output}",
-    "source_file": "main.cpp"
-  }
-}
-```
-
-#### 方法 C: 使用 chroot
-
-在执行时使用 chroot 隔离到虚拟系统：
-
-```cpp
-// 在 executeInSandbox() 函数中
-if (chdir(sandboxRoot.c_str()) == 0 && chroot(".") == 0) {
-    // 现在已经进入虚拟系统
-    // 执行程序时使用相对路径
-    execl("/usr/bin/python3", "python3", sourceFile.c_str(), nullptr);
-}
-```
-
-## 配置文件
-
-脚本会生成 `config/sandbox_paths.json`：
-
-```json
-{
-  "sandbox_root": "/opt/sandbox",
-  "bin_path": "/opt/sandbox/usr/bin",
-  "lib_path": "/opt/sandbox/usr/lib:/opt/sandbox/lib:/opt/sandbox/lib64",
-  "compilers": {
-    "gcc": "/opt/sandbox/usr/bin/gcc",
-    "g++": "/opt/sandbox/usr/bin/g++",
-    "javac": "/opt/sandbox/usr/bin/javac",
-    "java": "/opt/sandbox/usr/bin/java",
-    "go": "/opt/sandbox/usr/bin/go",
-    "rustc": "/opt/sandbox/usr/bin/rustc",
-    "zig": "/opt/sandbox/usr/bin/zig",
-    "python3": "/opt/sandbox/usr/bin/python3",
-    "node": "/opt/sandbox/usr/bin/node"
-  }
-}
-```
-
-## 目录结构
-
-构建后的虚拟系统目录结构：
-
-```
-/opt/sandbox/
-├── bin/              # 基本命令 (通过符号链接)
-│   ├── bash
-│   ├── sh
-│   ├── cat
-│   └── ls
-├── usr/
-│   └── bin/          # 编译器和解释器 (符号链接)
-│       ├── gcc -> /usr/bin/gcc
-│       ├── g++ -> /usr/bin/g++
-│       ├── python3 -> /usr/bin/python3
-│       └── ...
-├── lib/              # 必要的共享库
-│   └── x86_64-linux-gnu/
-│       ├── libc.so.6
-│       ├── libm.so.6
-│       └── ...
-├── lib64/
-│   └── ld-linux-x86-64.so.2
-├── etc/              # 配置文件
-│   ├── passwd
-│   ├── group
-│   ├── hosts
-│   └── resolv.conf
-├── tmp/              # 临时文件 (权限 1777)
-├── home/
-│   └── workspace/    # 用户工作目录
-└── proc/             # proc 文件系统 (挂载点)
-```
-
-## 优势
-
-1. **统一管理**: 所有编译器/解释器在统一位置
-2. **隔离性好**: 可以使用 chroot 进一步隔离
-3. **可移植**: 只需要复制整个目录即可迁移
-4. **版本固定**: 符号链接锁定特定版本
-5. **易于维护**: 集中管理，更新方便
-
-## 注意事项
-
-1. **需要 root 权限**: 创建符号链接和某些操作需要 root
-2. **库依赖**: 确保复制了所有必要的共享库
-3. **磁盘空间**: 虚拟系统会占用一定磁盘空间
-4. **权限问题**: 注意文件和目录的权限设置
+| 架构 | 预编译工具包 |
+|---|---|
+| x86_64 | `scripts/zig-x86_64-linux-*.tar.xz`, `scripts/node-v*-linux-x64.tar.xz`, `scripts/go*.linux-amd64.tar.gz` |
+| aarch64 (ARM64) | `scripts/zig-aarch64-linux-*.tar.xz`, `scripts/node-v*-linux-arm64.tar.xz`, `scripts/go*.linux-arm64.tar.gz` |
 
 ## 故障排查
 
-### 编译器找不到
+### 编译器找不到 cc1plus / cc1
 
 ```bash
-# 检查符号链接
-ls -la /opt/sandbox/usr/bin/gcc
-
-# 检查目标是否存在
-which gcc
-
-# 重新运行脚本
-sudo ./scripts/setup_sandbox_root.sh
+# 查找 cc1plus 路径
+g++ -print-search-dirs | grep install
+# 复制到沙箱
+sudo cp $(g++ -print-search-dirs | grep install | cut -d' ' -f2)/cc1plus /opt/sandbox/usr/bin/
+sudo cp $(g++ -print-search-dirs | grep install | cut -d' ' -f2)/cc1 /opt/sandbox/usr/bin/
 ```
 
 ### 库文件缺失
 
 ```bash
-# 查看缺少的库
-ldd /opt/sandbox/usr/bin/gcc
+# 查看可执行文件依赖
+ldd /opt/sandbox/usr/bin/g++
 
-# 手动复制库
-sudo cp /lib/x86_64-linux-gnu/libxxx.so /opt/sandbox/lib/x86_64-linux-gnu/
+# 手动复制缺失的库
+sudo cp /lib/aarch64-linux-gnu/libxxx.so /opt/sandbox/lib/aarch64-linux-gnu/
 ```
 
-### 权限问题
+### 解释器找不到
 
 ```bash
-# 修复权限
-sudo chmod 1777 /opt/sandbox/tmp
-sudo chmod -R 755 /opt/sandbox/usr/bin
+# 检查符号链接目标
+readlink -f /opt/sandbox/usr/bin/python3
+
+# 若目标不存在，重新创建符号链接
+sudo ln -sf $(which python3) /opt/sandbox/usr/bin/python3
 ```
-
-## 扩展
-
-### 添加新的语言支持
-
-1. 确保系统中已安装对应编译器/解释器
-2. 重新运行构建脚本
-3. 在 `languages.json` 中添加配置
-
-### 使用容器替代
-
-如果需要更强的隔离，可以考虑使用 Docker 容器：
-
-```dockerfile
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y \
-    gcc g++ make \
-    python3 python3-pip \
-    openjdk-17-jdk \
-    golang-go \
-    rustc cargo \
-    nodejs npm
-
-ENV SANDBOX_ROOT=/sandbox
-WORKDIR $SANDBOX_ROOT
-```
-
-## 相关文件
-
-- `scripts/setup_sandbox_root.sh`: 构建脚本
-- `scripts/sandbox_env.sh`: 环境变量设置脚本
-- `config/sandbox_paths.json`: 生成的路径配置
-- `src/code_executor.cpp`: 需要修改的源代码文件

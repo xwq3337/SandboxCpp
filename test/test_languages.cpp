@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <code_executor.h>
-#include "data_structures.h"
+#include <data_structures.h>
 
 class LanguagesTest : public ::testing::Test
 {

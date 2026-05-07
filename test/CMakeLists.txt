@@ -2,6 +2,7 @@
 add_executable(code_runner_tests
     test_data_structures.cpp
     test_languages.cpp
+    test_judge_verdict.cpp
     ${CMAKE_SOURCE_DIR}/src/code_executor.cpp
     ${CMAKE_SOURCE_DIR}/src/data_structures.cpp
     ${CMAKE_SOURCE_DIR}/src/namespace_isolation.cpp
